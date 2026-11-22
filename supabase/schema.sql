@@ -317,3 +317,163 @@ create policy reglas_insert on reglas_contables for insert
 drop policy if exists reglas_delete on reglas_contables;
 create policy reglas_delete on reglas_contables for delete
   using (tiene_rol(org_id, array['admin','contador']::rol_usuario[]));
+
+-- =====================================================================
+-- NÚCLEO 24/7: cola de trabajos, documentos con identidad remota, excepciones, configuración
+-- =====================================================================
+
+-- Configuración por empresa (declarativa: nada de NITs ni "if empresa" en el código)
+create table if not exists empresa_config (
+  org_id uuid primary key references organizaciones(id) on delete cascade,
+  piloto_activo boolean not null default false,          -- interruptor de emergencia
+  modo text not null default 'sombra' check (modo in ('sombra','real')),
+  umbral_confianza numeric(4,3) not null default 0.900,
+  min_evidencia int not null default 5,
+  ventana_dias_ds int not null default 10,
+  cuenta_cxp_defecto text,
+  cuenta_banco_defecto text,
+  tipo_comprobante_rp int,
+  tipo_comprobante_fc int,
+  tipo_comprobante_ds int,
+  hora_inicio time default '18:00',
+  hora_fin time default '07:00',
+  actualizado_en timestamptz not null default now()
+);
+
+-- Cola de trabajos (Postgres como cola; el worker reclama con SKIP LOCKED)
+create table if not exists jobs (
+  id bigint generated always as identity primary key,
+  org_id uuid references organizaciones(id) on delete cascade,
+  tipo text not null,
+  payload jsonb not null default '{}',
+  estado text not null default 'pendiente' check (estado in ('pendiente','en_curso','ok','error','muerto')),
+  intentos int not null default 0,
+  max_intentos int not null default 5,
+  ejecutar_en timestamptz not null default now(),
+  bloqueado_en timestamptz,
+  bloqueado_por text,
+  ultimo_error text,
+  clave_unica text,                                      -- evita encolar dos veces lo mismo
+  creado_en timestamptz not null default now(),
+  terminado_en timestamptz
+);
+create unique index if not exists jobs_clave_unica_idx on jobs(clave_unica) where clave_unica is not null and estado in ('pendiente','en_curso');
+create index if not exists jobs_cola_idx on jobs(estado, ejecutar_en);
+
+create or replace function reclamar_jobs(p_worker text, p_limite int default 5, p_tipos text[] default null)
+returns setof jobs language plpgsql security definer set search_path = public as $$
+begin
+  return query
+  with c as (
+    select id from jobs
+    where (estado = 'pendiente' and ejecutar_en <= now()
+           or estado = 'en_curso' and bloqueado_en < now() - interval '10 minutes')   -- recupera jobs de un worker caído
+      and (p_tipos is null or tipo = any(p_tipos))
+    order by ejecutar_en
+    limit p_limite
+    for update skip locked)
+  update jobs j set estado = 'en_curso', bloqueado_en = now(), bloqueado_por = p_worker, intentos = j.intentos + 1
+  from c where j.id = c.id
+  returning j.*;
+end $$;
+
+create or replace function terminar_job(p_id bigint, p_ok boolean, p_error text default null, p_reintentar_seg int default 60)
+returns void language plpgsql security definer set search_path = public as $$
+declare j jobs;
+begin
+  select * into j from jobs where id = p_id for update;
+  if p_ok then
+    update jobs set estado = 'ok', terminado_en = now(), bloqueado_en = null, ultimo_error = null where id = p_id;
+  elsif j.intentos >= j.max_intentos then
+    update jobs set estado = 'muerto', terminado_en = now(), ultimo_error = p_error where id = p_id;
+  else
+    update jobs set estado = 'pendiente', bloqueado_en = null, ultimo_error = p_error,
+      ejecutar_en = now() + make_interval(secs => p_reintentar_seg * power(2, j.intentos - 1)) where id = p_id;
+  end if;
+end $$;
+
+-- Documentos a causar/enviar (compras, DS, egresos, comprobantes...) con identidad remota inmutable
+create table if not exists documentos_causacion (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references organizaciones(id) on delete cascade,
+  tipo text not null,                                    -- compra | documento_soporte | egreso | recibo_caja | comprobante | venta | nomina
+  origen text not null,                                  -- carga_manual | drive | onedrive | token_dian | conciliacion
+  huella text not null,                                  -- hash del contenido / CUFE / clave natural para evitar duplicados
+  tercero_nit text,
+  fecha date,
+  total numeric(18,2),
+  estado text not null default 'borrador'
+    check (estado in ('borrador','propuesto','listo','enviando','enviado','verificado','diferencia','excepcion','descartado')),
+  confianza numeric(5,4),
+  propuesta jsonb not null default '{}',                 -- asiento/payload propuesto
+  payload_enviado jsonb,
+  respuesta_siigo jsonb,
+  siigo_id text,                                         -- identidad remota
+  siigo_nombre text,                                     -- p. ej. RP-1-45
+  verificacion jsonb,
+  error text,
+  creado_en timestamptz not null default now(),
+  actualizado_en timestamptz not null default now(),
+  unique (org_id, tipo, huella)
+);
+create index if not exists doc_estado_idx on documentos_causacion(org_id, estado);
+
+-- Una vez que existe siigo_id no se puede borrar ni cambiar a "enviar de nuevo" ni borrar la identidad
+create or replace function proteger_identidad_remota() returns trigger language plpgsql as $$
+begin
+  if tg_op = 'DELETE' then
+    if old.siigo_id is not null then raise exception 'Documento con identidad en Siigo: no se puede eliminar'; end if;
+    return old;
+  end if;
+  if old.siigo_id is not null and (new.siigo_id is distinct from old.siigo_id) then
+    raise exception 'La identidad remota de Siigo es inmutable';
+  end if;
+  if old.siigo_id is not null and new.estado in ('borrador','propuesto','listo','enviando') then
+    raise exception 'Un documento ya creado en Siigo no puede volver a envío';
+  end if;
+  new.actualizado_en = now();
+  return new;
+end $$;
+drop trigger if exists doc_identidad_trg on documentos_causacion;
+create trigger doc_identidad_trg before update or delete on documentos_causacion
+  for each row execute function proteger_identidad_remota();
+
+-- Bandeja de excepciones: lo que el piloto NO decidió solo
+create table if not exists excepciones (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references organizaciones(id) on delete cascade,
+  documento_id uuid references documentos_causacion(id) on delete cascade,
+  motivo text not null,                                  -- sin_precedente | baja_confianza | tercero_inexistente | descuadre | duplicado | siigo_error ...
+  detalle jsonb not null default '{}',
+  opciones jsonb,                                        -- respuestas posibles de 1 clic
+  estado text not null default 'abierta' check (estado in ('abierta','resuelta','descartada')),
+  resuelta_por uuid,
+  resolucion jsonb,
+  creada_en timestamptz not null default now(),
+  resuelta_en timestamptz
+);
+
+-- Latidos del worker (alerta si deja de latir)
+create table if not exists worker_latidos (
+  worker text primary key,
+  ultimo_latido timestamptz not null default now(),
+  info jsonb not null default '{}'
+);
+
+alter table empresa_config        enable row level security;
+alter table jobs                  enable row level security;
+alter table documentos_causacion  enable row level security;
+alter table excepciones           enable row level security;
+alter table worker_latidos        enable row level security;
+
+drop policy if exists empresa_config_select on empresa_config;
+create policy empresa_config_select on empresa_config for select using (es_miembro(org_id));
+drop policy if exists empresa_config_update on empresa_config;
+create policy empresa_config_update on empresa_config for update using (tiene_rol(org_id, array['admin','contador']::rol_usuario[]));
+drop policy if exists documentos_select on documentos_causacion;
+create policy documentos_select on documentos_causacion for select using (es_miembro(org_id));
+drop policy if exists excepciones_select on excepciones;
+create policy excepciones_select on excepciones for select using (es_miembro(org_id));
+drop policy if exists jobs_select on jobs;
+create policy jobs_select on jobs for select using (org_id is not null and es_miembro(org_id));
+-- escrituras: solo servidor/worker (service_role)

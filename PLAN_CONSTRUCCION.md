@@ -10,6 +10,18 @@ Leyenda: `[x]` hecho y probado · `[~]` hecho pero **pendiente de validar con su
 - Documentación de Siigo leída y archivada: `docs/SIIGO_API_NOTAS.md` y `docs/siigo-api/`.
 - Pendiente de la usuaria: repositorio de la herramienta de planos (GitHub), presupuesto, credenciales/host `api.siigo.com`, auxiliar y balance por tercero de ejemplo.
 
+- Un solo repositorio al final: ver `docs/CONSOLIDACION_REPOS.md`.
+- Costo: dominio propio reutilizado (sin costo); Supabase **nuevo gratuito y propio** (el de Lovable queda con Lovable); un servidor pequeño siempre encendido para web + worker (~US$5–10/mes según fuentes no oficiales, por confirmar). Backups propios porque el plan gratuito no los incluye.
+
+## NÚCLEO 24/7 (en construcción)
+- [x] Esquema: empresa_config, cola `jobs` (SKIP LOCKED, reintentos exponenciales), `documentos_causacion` con identidad remota inmutable (trigger), `excepciones`, latidos
+- [x] Worker (`npm run worker`), limitador 90 req/min por empresa, disyuntor por empresa
+- [x] Egresos: cruce banco↔pagos (portado y mejorado) + recibo de pago correcto `/v1/payment-receipts` tipo Detailed (19 pruebas)
+- [ ] Cruce con retenciones: el movimiento bancario es el NETO; hoy el cruce compara contra el bruto (hallazgo de las pruebas)
+- [ ] Cola → handlers de compras/DS/egresos con las 7 compuertas
+- [ ] Bandeja de excepciones (UI) y modo sombra/backtesting
+- [ ] Cartera por pagar vía `/v1/accounts-payable` (reemplaza listar `/v1/purchases`)
+
 ## BLOQUE 0 · Infraestructura (reemplazado, ver decisiones)
 - [x] Investigación y tabla comparativa → `docs/BLOQUE0_INFRAESTRUCTURA.md`
 - [x] Stack definido (Render + Supabase + QStash + Resend + WhatsApp Cloud API)
