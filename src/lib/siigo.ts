@@ -7,10 +7,15 @@
  * - Reintentos con backoff ante 429 / 5xx; respeta Retry-After.
  * - Paginación: iterador asíncrono sobre page / page_size.
  *
- * ⚠️ VERIFICAR CONTRA developers.siigo.com: la red de la sesión de desarrollo no permitió
- * leer la documentación oficial. Los nombres de ruta de ENDPOINTS marcados con "VERIFICAR"
- * están basados en el mapa de bloques del proyecto y en conocimiento previo, no en lectura
- * directa de la documentación. Se centralizan aquí para corregirlos en un solo lugar.
+ * Verificado contra developers.siigo.com (22-nov-2026):
+ *  - Límite: 100 peticiones/minuto POR EMPRESA de Siigo → pausa mínima 650 ms entre llamadas.
+ *  - Timeout recomendado ≥ 120 s (la creación de comprobantes puede tardar).
+ *  - Header opcional `Idempotency-Key` (alfanumérico, ≤30 car.) en POST de invoices, credit-notes,
+ *    journals y vouchers: permite reintentar sin duplicar.
+ *  - Se bloquea al usuario API si >80 % de sus requests fallan durante 7 días.
+ *  - NO existe listado (GET) de /v1/purchases ni /v1/purchase-support-documents: solo por id.
+ *  - NO existe endpoint de PUC ni de cuentas por cobrar; sí /v1/accounts-payable.
+ *  - Las líneas de facturas/compras NO traen cuenta contable; sí las traen journals, vouchers y payment-receipts.
  */
 
 export type SiigoConfig = {
@@ -28,10 +33,10 @@ export const SIIGO_ENDPOINTS = {
   // Documentos (históricos)
   ventas: "/v1/invoices",
   compras: "/v1/purchases",
-  documentosSoporte: "/v1/purchase-support-documents", // VERIFICAR ruta exacta
+  documentosSoporte: "/v1/purchase-support-documents", // solo por id (sin listado)
   comprobantes: "/v1/journals",
   recibosCaja: "/v1/vouchers",
-  recibosPago: "/v1/payment-receipts", // VERIFICAR ruta exacta
+  recibosPago: "/v1/payment-receipts",
   notasCredito: "/v1/credit-notes",
   // Maestros
   terceros: "/v1/customers",
@@ -40,7 +45,10 @@ export const SIIGO_ENDPOINTS = {
   centrosCosto: "/v1/cost-centers",
   tiposComprobante: "/v1/document-types",
   grupos: "/v1/account-groups",
-  puc: "/v1/accounts", // VERIFICAR: puede no existir; ver docs/BLOQUE1_NOTAS_SIIGO.md
+  cuentasPorPagar: "/v1/accounts-payable",
+  balancePruebaTercero: "/v1/test-balance-report-by-thirdparty", // POST → URL de Excel
+  balancePrueba: "/v1/test-balance-report", // POST → URL de Excel
+  webhooks: "/v1/webhooks",
 } as const;
 
 export class SiigoError extends Error {
@@ -79,7 +87,7 @@ export class SiigoClient {
     }
     this.cfg = {
       baseUrl: (cfg.baseUrl ?? "https://api.siigo.com").replace(/\/+$/, ""),
-      minIntervalMs: cfg.minIntervalMs ?? 250,
+      minIntervalMs: cfg.minIntervalMs ?? 650,
       fetchImpl: cfg.fetchImpl ?? fetch,
       username: cfg.username,
       accessKey: cfg.accessKey,
@@ -119,7 +127,7 @@ export class SiigoClient {
   async request<T = unknown>(
     method: "GET" | "POST" | "PUT" | "DELETE",
     path: string,
-    opts: { query?: Record<string, string | number | boolean | undefined>; body?: unknown } = {},
+    opts: { query?: Record<string, string | number | boolean | undefined>; body?: unknown; idempotencyKey?: string } = {},
   ): Promise<T> {
     const url = new URL(this.cfg.baseUrl + path);
     for (const [k, v] of Object.entries(opts.query ?? {})) {
@@ -136,8 +144,10 @@ export class SiigoClient {
           "Content-Type": "application/json",
           Authorization: token,
           "Partner-Id": this.cfg.partnerId,
+          ...(opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey.replace(/[^a-zA-Z0-9]/g, "").slice(0, 30) } : {}),
         },
         body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        signal: AbortSignal.timeout(120_000),
       });
 
       if (res.status === 401 && !refreshed) {

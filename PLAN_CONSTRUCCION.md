@@ -18,12 +18,13 @@ Leyenda: `[x]` hecho y probado · `[~]` hecho pero **pendiente de validar con su
 - [x] Credenciales Siigo cifradas AES-256-GCM por organización
 - [x] Motor de aprendizaje: descarga reanudable → líneas contables → reglas con confianza (8 pruebas unitarias)
 - [x] Importador alterno del **Auxiliar en CSV** exportado de Siigo (mapeador flexible de columnas)
-- [~] Rutas exactas de `purchase-support-documents`, `payment-receipts`, `accounts` (PUC) y parámetro de filtro por fecha (`date_start`)
-- [~] Qué campos de cuenta contable devuelve cada GET de Siigo (ver riesgo abajo)
+- [x] Documentación de Siigo leída (22-nov-2026): rate limit 100/min por empresa, Idempotency-Key, sin listado de compras/DS, sin PUC, líneas de facturas/compras sin cuenta contable
+- [ ] **Rediseño del aprendizaje**: fuente primaria = Auxiliar/Balance por tercero (Excel vía `/v1/test-balance-report-by-thirdparty` o carga manual) + journals/RC/RP por API
+- [ ] Decidir infraestructura 24/7 (ver respuesta en el chat; el Bloque 0 original con hosting "que duerme" queda reemplazado)
 - [ ] Prueba real con su cuenta de Siigo y su proyecto Supabase
 
-### ⚠️ Riesgo conocido del Bloque 1
-No pude leer `developers.siigo.com` desde esta sesión (host bloqueado por la red). Si los GET de facturas/compras **no devuelven la cuenta contable por línea**, el motor aprende de ellos solo **tarifas** de IVA/retenciones; las **cuentas** se aprenden de comprobantes, RC y RP (que sí traen `account.code`) o del **Auxiliar en CSV**. El resultado de su primera corrida (`lineasSinCuenta`) lo dirá con certeza.
+### Hallazgo clave (verificado en la documentación oficial)
+Las facturas de venta y de compra **no devuelven la cuenta contable por línea**, y las compras/documentos soporte **no tienen listado**. Solo `journals`, `vouchers` y `payment-receipts` traen `account.code` por línea. Por eso el aprendizaje de precedentes debe basarse en el **auxiliar/balance por tercero**, no en los GET de facturas.
 
 ## BLOQUE 2 · Causación, pre-validación DIAN y nómina electrónica
 - [ ] Importar Excel/CSV/PDF con vista previa editable
