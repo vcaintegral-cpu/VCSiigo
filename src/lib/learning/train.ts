@@ -148,7 +148,7 @@ export async function guardarReglas(
   return filas.length;
 }
 
-/** Sincroniza maestros (terceros, productos, impuestos, centros de costo, tipos de comprobante, PUC si existe). */
+/** Sincroniza maestros (terceros, productos, impuestos, centros de costo, tipos de comprobante). */
 export async function sincronizarMaestros(db: SupabaseClient, siigo: SiigoClient, orgId: string) {
   const ahora = new Date().toISOString();
   const resumen: Record<string, number | string> = {};
@@ -182,17 +182,6 @@ export async function sincronizarMaestros(db: SupabaseClient, siigo: SiigoClient
       resumen[j.tabla] = `error: ${e?.message ?? e}`;
     }
   }
-  // PUC: puede no estar expuesto por la API; si falla no es crítico.
-  try {
-    let n = 0;
-    for await (const { items } of siigo.paginate<Obj>(SIIGO_ENDPOINTS.puc)) {
-      const filas = items.map((x) => ({ org_id: orgId, codigo: String(x.code ?? x.id), nombre: x.name ?? null, naturaleza: x.nature ?? null, crudo: x, sincronizado_en: ahora }));
-      await db.from("siigo_puc").upsert(filas, { onConflict: "org_id,codigo" });
-      n += filas.length;
-    }
-    resumen.siigo_puc = n;
-  } catch (e: any) {
-    resumen.siigo_puc = `no disponible: ${e?.message ?? e}`;
-  }
+  // La API de Siigo NO expone el PUC: se obtiene del balance de prueba (Excel) o de la carga manual.
   return resumen;
 }
