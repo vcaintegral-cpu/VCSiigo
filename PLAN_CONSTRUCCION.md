@@ -4,7 +4,13 @@ Rama de trabajo: `claude/erp-siigo-nube-colombia-646d0w` · Stack: Next.js 16 (A
 
 Leyenda: `[x]` hecho y probado · `[~]` hecho pero **pendiente de validar con su cuenta real de Siigo** · `[ ]` por hacer
 
-## BLOQUE 0 · Infraestructura gratuita
+## DECISIONES (22-nov-2026)
+- Se reemplaza el Bloque 0 original: **no se usa hosting que duerma**. Web (Next.js) + **worker siempre encendido** + Supabase de pago. Ver `docs/ARQUITECTURA_NUCLEO.md`.
+- Opción B elegida por la usuaria: núcleo nuevo en `VCSiigo`; `vccausacion` no se sigue usando (contiene datos de terceros, no se borra). Se podrán portar módulos puros propios (con sus pruebas) tras auditarlos.
+- Documentación de Siigo leída y archivada: `docs/SIIGO_API_NOTAS.md` y `docs/siigo-api/`.
+- Pendiente de la usuaria: repositorio de la herramienta de planos (GitHub), presupuesto, credenciales/host `api.siigo.com`, auxiliar y balance por tercero de ejemplo.
+
+## BLOQUE 0 · Infraestructura (reemplazado, ver decisiones)
 - [x] Investigación y tabla comparativa → `docs/BLOQUE0_INFRAESTRUCTURA.md`
 - [x] Stack definido (Render + Supabase + QStash + Resend + WhatsApp Cloud API)
 - [ ] Confirmar en páginas oficiales Koyeb / Railway / Cloudflare (no verificados)
