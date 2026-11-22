@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "worker": "tsx --env-file=.env.local worker/index.ts",
+    "diagnostico": "tsx --env-file=.env.local scripts/diagnostico-siigo.ts",
     "entrenar": "tsx --env-file=.env.local scripts/entrenar.ts"
   },
   "dependencies": {
