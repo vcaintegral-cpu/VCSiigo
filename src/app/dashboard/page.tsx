@@ -10,7 +10,7 @@ export default async function Dashboard() {
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <h1 className="text-2xl font-semibold">Panel · Bloque 1</h1>
-      {orgs.length === 0 && <p>No perteneces a ninguna organización. Crea una con la función SQL <code>crear_organizacion()</code> (ver LEEME_BLOQUE1).</p>}
+      {orgs.length === 0 && <p>No perteneces a ninguna organización. Créala con <code>supabase/semilla.sql</code> (ver docs/PASO_A_PASO_DESPLIEGUE.md).</p>}
       {orgs.map((o: any) => <PanelSiigo key={o.id} org={o} />)}
     </main>
   );
