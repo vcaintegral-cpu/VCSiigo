@@ -3,7 +3,7 @@ import { agregarReglas } from "../src/lib/learning/aggregate";
 import { lineasDeAuxiliarCsv } from "../src/lib/learning/auxiliar-csv";
 import { calcularConfianza } from "../src/lib/learning/confidence";
 import { lineasDeAsiento, lineasDeFactura } from "../src/lib/learning/extract";
-import { rolPorCuenta } from "../src/lib/learning/puc";
+import { rolPorCuenta, rolPorTipoImpuesto } from "../src/lib/learning/puc";
 
 describe("PUC", () => {
   it("clasifica cuentas", () => {
@@ -65,7 +65,7 @@ describe("extracción y agregación", () => {
   it("aprende tarifas de IVA y retención de una factura de compra", () => {
     const doc = {
       date: "2026-05-02", supplier: { identification: "800111222" },
-      items: [{ description: "Papelería", price: 100000, quantity: 1, total: 100000, taxes: [{ percentage: 19, value: 19000 }] }],
+      items: [{ description: "Papelería", price: 100000, quantity: 1, total: 100000, taxes: [{ name: "IVA 19%", percentage: 19, value: 19000 }] }],
       retentions: [{ name: "Retefuente compras", percentage: 2.5, value: 2500 }],
     };
     const r = agregarReglas(lineasDeFactura("compra", doc));
@@ -88,5 +88,33 @@ describe("auxiliar CSV", () => {
     expect(r.lineas).toHaveLength(3);
     expect(r.lineas[0]).toMatchObject({ tipoDocumento: "compra", fecha: "2026-03-05", valor: 100000 });
     expect(r.lineas.find((l) => l.rol === "iva")?.tarifa).toBe(19);
+  });
+});
+
+describe("documentos reales de Siigo (formas verificadas)", () => {
+  it("compra con líneas tipo Account: la cuenta viene en items.code y los impuestos traen su tipo", () => {
+    const doc = {
+      date: "2026-11-05", supplier: { identification: "800123456", branch_office: 0 },
+      items: [{ type: "Account", code: "51959501", description: "Servicio mantenimiento 11", quantity: 1, price: 100000, total: 100000,
+        taxes: [{ id: 1, name: "IVA 19%", type: "IVA", percentage: 19, value: 19000 }, { id: 2, name: "Retefuente 4%", type: "Retefuente", percentage: 4, value: 4000 }] }],
+      retentions: [],
+    };
+    const r = agregarReglas(lineasDeFactura("compra", doc), new Date("2026-11-18"));
+    expect(r.find((x) => x.rolLinea === "gasto_costo" && x.concepto === "")).toMatchObject({ cuentaPuc: "51959501", terceroNit: "800123456" });
+    expect(r.find((x) => x.rolLinea === "iva")?.tarifa).toBe(19);
+    expect(r.find((x) => x.rolLinea === "retefuente")?.tarifa).toBe(4);
+  });
+  it("documento soporte con Retefuente 3,5 % por ítem", () => {
+    const doc = { date: "2026-11-05", supplier: { identification: "1037000111" },
+      items: [{ type: "Account", code: "51201001", description: "Honorarios", total: 500000, taxes: [{ type: "Retefuente", percentage: 3.5, value: 17500 }] }] };
+    const r = agregarReglas(lineasDeFactura("documento_soporte", doc));
+    expect(r.find((x) => x.rolLinea === "retefuente")).toMatchObject({ tarifa: 3.5, tipoDocumento: "documento_soporte" });
+  });
+  it("clasifica tipos de impuesto", () => {
+    expect(rolPorTipoImpuesto("ReteICA")).toBe("reteica");
+    expect(rolPorTipoImpuesto("ReteIVA")).toBe("reteiva");
+    expect(rolPorTipoImpuesto("IVA")).toBe("iva");
+    expect(rolPorTipoImpuesto("Autoretención")).toBe("autorretencion");
+    expect(rolPorTipoImpuesto("Impoconsumo")).toBe("impoconsumo");
   });
 });

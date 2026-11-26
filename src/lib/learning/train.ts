@@ -8,7 +8,9 @@ type Obj = Record<string, any>;
 
 /** Recursos históricos a descargar. `paramDesde` es el filtro de fecha de Siigo (VERIFICAR nombre en docs). */
 export const RECURSOS_HISTORICOS: { recurso: TipoDocumento; path: string }[] = [
-  // Compras y documentos soporte NO tienen listado en la API (solo GET por id) → se aprenden del auxiliar/balance.
+  // Compras y DS: el listado NO está documentado, pero existe (verificado con una empresa real el 26-nov-2026).
+  { recurso: "compra", path: SIIGO_ENDPOINTS.compras },
+  { recurso: "documento_soporte", path: SIIGO_ENDPOINTS.documentosSoporte },
   { recurso: "venta", path: SIIGO_ENDPOINTS.ventas },
   { recurso: "nota_credito", path: SIIGO_ENDPOINTS.notasCredito },
   { recurso: "comprobante", path: SIIGO_ENDPOINTS.comprobantes },

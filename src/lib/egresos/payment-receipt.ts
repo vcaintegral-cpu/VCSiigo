@@ -2,6 +2,8 @@ import { round2 } from "../util/parse";
 import type { Voucher } from "./types";
 
 export type EgresoSetup = {
+  /** Medio de pago de Siigo (GET /v1/payment-types) ligado al banco/caja; requerido para DebtPayment. */
+  paymentMethodId?: number;
   documentId: number; // tipo de comprobante RP (GET /v1/document-types?type=RP)
   bankAccountCode: string; // cuenta de banco/caja a acreditar
   cxpAccountCode: string; // cuenta de proveedores/CxP a debitar (p. ej. 22050101 / 23359501), por empresa
@@ -53,4 +55,36 @@ export function buildPaymentReceipt(voucher: Voucher, setup: EgresoSetup, ajuste
     ],
     observations: (setup.observations ?? `Pago ${voucher.movement.reference || voucher.movement.description}`).slice(0, 4000),
   };
+}
+
+/**
+ * Recibo de pago "abono a deuda" (DebtPayment): es el formato que Siigo Nube usa por defecto y el que
+ * aparece en los recibos reales de la empresa de prueba (items[{due, value}] + payment{id, value}).
+ * La cuenta bancaria la define el medio de pago en Siigo. Sin retenciones ni ajustes.
+ */
+export function buildDebtPaymentReceipt(voucher: Voucher, setup: EgresoSetup) {
+  if (!setup.paymentMethodId) throw new Error("Falta el medio de pago (payment-types) del banco");
+  const items = voucher.lines.map((l) => {
+    if (!l.due) throw new Error(`Sin vencimiento en Siigo para ${l.payment.invoiceNumber}`);
+    return { due: { prefix: l.due.prefix, consecutive: l.due.consecutive, quote: l.due.quote, date: l.due.dueDate }, value: round2(l.payment.amount) };
+  });
+  const total = round2(items.reduce((s, i) => s + i.value, 0));
+  const first = voucher.lines[0]!.due!;
+  return {
+    document: { id: setup.documentId },
+    date: voucher.movement.date,
+    type: "DebtPayment" as const,
+    supplier: { identification: voucher.supplierId, branch_office: first.supplierBranch },
+    ...(setup.costCenter ? { cost_center: setup.costCenter } : {}),
+    items,
+    payment: { id: setup.paymentMethodId, value: total },
+    observations: (setup.observations ?? `Pago ${voucher.movement.reference || voucher.movement.description}`).slice(0, 4000),
+  };
+}
+
+/** Elige el formato: simple (DebtPayment) si no hay ajustes; avanzado (Detailed) si hay retenciones/ajustes. */
+export function construirEgreso(voucher: Voucher, setup: EgresoSetup, ajustes: Ajuste[] = []) {
+  return ajustes.length === 0 && setup.paymentMethodId
+    ? buildDebtPaymentReceipt(voucher, setup)
+    : buildPaymentReceipt(voucher, setup, ajustes);
 }

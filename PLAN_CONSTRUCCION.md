@@ -17,6 +17,9 @@ Leyenda: `[x]` hecho y probado · `[~]` hecho pero **pendiente de validar con su
 - [x] Esquema: empresa_config, cola `jobs` (SKIP LOCKED, reintentos exponenciales), `documentos_causacion` con identidad remota inmutable (trigger), `excepciones`, latidos
 - [x] Worker (`npm run worker`), limitador 90 req/min por empresa, disyuntor por empresa
 - [x] Egresos: cruce banco↔pagos (portado y mejorado) + recibo de pago correcto `/v1/payment-receipts` tipo Detailed (19 pruebas)
+- [x] Diagnóstico v1 con empresa real: listados de compras/DS existen; cuenta en `items.code` (tipo Account); RP reales son `DebtPayment` (ver docs/SIIGO_API_NOTAS.md)
+- [x] Extractor de aprendizaje corregido (Account/Product, tipos de impuesto), builder DebtPayment, lectura de cartera por pagar
+- [ ] Diagnóstico v2 (filtros de fecha, medios de pago, catálogos, detalle por id, balance)
 - [ ] Cruce con retenciones: el movimiento bancario es el NETO; hoy el cruce compara contra el bruto (hallazgo de las pruebas)
 - [ ] Cola → handlers de compras/DS/egresos con las 7 compuertas
 - [ ] Bandeja de excepciones (UI) y modo sombra/backtesting

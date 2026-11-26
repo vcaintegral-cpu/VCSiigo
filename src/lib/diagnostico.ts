@@ -9,7 +9,7 @@ export function forma(valor: unknown, clave = "", profundidad = 0): unknown {
   if (valor === null || valor === undefined) return null;
   if (Array.isArray(valor)) {
     if (valor.length === 0) return [];
-    return [forma(valor[0], clave, profundidad + 1), valor.length > 1 ? `…(+${valor.length - 1} más)` : undefined].filter((x) => x !== undefined);
+    return [forma(valor[0], clave, profundidad + 1), valor.length > 1 ? `...(+${valor.length - 1} mas)` : undefined].filter((x) => x !== undefined);
   }
   if (typeof valor === "object") {
     if (profundidad > 8) return "<objeto>";

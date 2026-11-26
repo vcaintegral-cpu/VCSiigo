@@ -36,3 +36,17 @@ Todo lo que está marcado **[PRUEBA REAL]** no está definido por la documentaci
 3. Compras y DS no se pueden listar: la herramienta debe **guardar siempre el `id` devuelto por Siigo** y tratarlo como identidad remota inmutable.
 4. `retentions` en compras acepta ids de ReteICA y ReteIVA; en ventas/DS también Autoretención. Cómo se registra la **retefuente en compras** **[PRUEBA REAL]**.
 5. Cartera por cobrar: leerla del balance por tercero de la cuenta 1305 o de los `due` de journals/vouchers **[PRUEBA REAL]**.
+
+
+## ✅ Verificado con una empresa real (diagnóstico de solo lectura, 26-nov-2026)
+Corrige algunas conclusiones previas basadas solo en la documentación.
+- **Los listados de compras (`GET /v1/purchases`) y de documentos soporte (`GET /v1/purchase-support-documents`) SÍ existen** aunque no estén documentados (6.954 y 439 resultados en la empresa de prueba). Siguen siendo "no documentados": pueden cambiar sin aviso.
+- **Las líneas de compra/DS con `items[].type = "Account"` traen la cuenta contable en `items[].code`** (p. ej. `51959501`). Las de `type = "Product"` no: su cuenta depende del grupo contable del producto.
+- **Impuestos y retenciones por línea:** `items[].taxes[]` trae `type` (`IVA`, `Retefuente`, ...), `percentage` y `value`. En DS y notas crédito se vio `Retefuente` 3,5 % y 2,5 % **como impuesto de línea**. `retentions[]` a nivel de documento existe (ReteICA/ReteIVA) pero vino vacío.
+- **Facturas de venta, notas crédito, comprobantes, RC y RP** listan correctamente. Los comprobantes contables traen cuenta, tercero, `tax{base_value}` y valor por línea.
+- **Recibos de pago/egreso reales usan `type: "DebtPayment"`:** `items:[{due:{prefix,consecutive,quote,date}, value}]` + `payment:{id,name,value,due_date}`. Es el formato que debe usar el módulo de egresos por defecto; `Detailed` queda para retenciones y ajustes.
+- **Cartera por pagar:** `due{prefix,consecutive,quote,date,balance}` + `provider{id,identification,name}` (sin sucursal en el ejemplo; el centro de costo es opcional). El prefijo del vencimiento puede ser el de la factura del proveedor (p. ej. `Q5F6`), no el `FC-1` interno: se usa tal cual lo entrega Siigo.
+- **`GET /v1/payment-types?document_type=RP` devuelve 404**; el parámetro solo se confirma para `FV`/`NC`/`FC` (el diagnóstico v2 prueba todos).
+- **Catálogos:** 42 impuestos, tipos FV/FC/DS/RC/RP/CC activos e inactivos mezclados (hay que filtrar `active`), tipos de comprobante con `automatic_number`, `cost_center`, `reteiva`, `reteica` configurables por tipo.
+- **Terceros:** `/v1/customers` devolvió 5.347 registros, con `contacts[]` (requisito `customer_settings`).
+- **Pendiente de verificar (diagnóstico v2):** qué filtro de fecha respeta cada listado (`created_start`, `updated_start`, `date_start`): el total con fecha futura debe ser 0. En la corrida v1 con `created_start` de hace 30 días el total fue 6.954 compras, lo que sugiere que el filtro no se aplicó o que esa empresa cargó todo recientemente.

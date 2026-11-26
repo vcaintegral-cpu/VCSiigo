@@ -1,4 +1,4 @@
-import { naturalezaPorDefecto, normalizarConcepto, rolPorCuenta, soloDigitos } from "./puc";
+import { naturalezaPorDefecto, normalizarConcepto, rolPorCuenta, rolPorTipoImpuesto, soloDigitos } from "./puc";
 import type { LineaContable, RolLinea, TipoDocumento } from "./types";
 
 type Obj = Record<string, any>;
@@ -24,74 +24,45 @@ export function nitDelDocumento(doc: Obj): string {
   );
 }
 
-function rolRetencion(r: Obj): RolLinea {
-  const t = `${r.type ?? ""} ${r.name ?? ""}`.toLowerCase();
-  if (/ica/.test(t)) return "reteica";
-  if (/iva/.test(t)) return "reteiva";
-  return "retefuente";
-}
-
 /**
- * Facturas de venta / compra / documento soporte.
- * Aprende CUENTA solo si el payload la trae (item.account.code); siempre aprende TARIFAS
- * de impuestos y retenciones cuando vienen en el documento.
+ * Facturas de venta / compra / documento soporte (formas verificadas con una empresa real, 26-nov-2026):
+ *  - items[].type === "Account": items[].code ES la cuenta contable (PUC) de la línea.
+ *  - items[].type === "Product": la cuenta depende del grupo contable del producto (no viene en el documento).
+ *  - items[].taxes[] trae `type` (IVA, Retefuente, ReteICA, ReteIVA, Autoretención, Impoconsumo...) y `percentage`.
+ *  - retentions[] a nivel de documento (ReteICA/ReteIVA) cuando el tipo de comprobante lo permite.
  */
 export function lineasDeFactura(tipo: TipoDocumento, doc: Obj): LineaContable[] {
   const nit = nitDelDocumento(doc);
   if (!nit) return [];
   const fecha = fechaISO(doc.date);
   const cc = centro(doc.cost_center);
-  const esVenta = tipo === "venta";
-  const out: LineaContable[] = [];
+  const esVenta = tipo === "venta" || tipo === "nota_credito";
   const rolBase: RolLinea = esVenta ? "ingreso" : "gasto_costo";
+  const out: LineaContable[] = [];
+
+  const impuesto = (t: Obj): LineaContable => {
+    const rol = rolPorTipoImpuesto(t.type, t.name);
+    const pct = t.percentage ?? t.rate;
+    return {
+      terceroNit: nit, tipoDocumento: tipo, fecha, cuenta: "", naturaleza: naturalezaPorDefecto(tipo, rol),
+      valor: num(t.value), rol, concepto: "", tarifa: pct == null ? null : Math.round(num(pct) * 100) / 100, centroCosto: cc,
+    };
+  };
 
   for (const it of (doc.items as Obj[]) ?? []) {
-    const cuenta = soloDigitos(it.account?.code ?? it.accounting_account?.code ?? it.account_code);
-    const rol = cuenta ? rolPorCuenta(cuenta) : rolBase;
+    const cuenta = it.type === "Account"
+      ? soloDigitos(it.code)
+      : soloDigitos(it.account?.code ?? it.accounting_account?.code ?? it.account_code);
+    const rolCuenta = cuenta ? rolPorCuenta(cuenta) : rolBase;
+    const rol = rolCuenta === "otro" ? rolBase : rolCuenta;
     out.push({
-      terceroNit: nit,
-      tipoDocumento: tipo,
-      fecha,
-      cuenta,
-      naturaleza: naturalezaPorDefecto(tipo, rol === "otro" ? rolBase : rol),
-      valor: num(it.total ?? num(it.price) * (num(it.quantity) || 1)),
-      rol: rol === "otro" ? rolBase : rol,
-      concepto: normalizarConcepto(it.description),
-      tarifa: null,
-      centroCosto: cc,
+      terceroNit: nit, tipoDocumento: tipo, fecha, cuenta, naturaleza: naturalezaPorDefecto(tipo, rol),
+      valor: num(it.total ?? num(it.price) * (num(it.quantity) || 1)), rol,
+      concepto: normalizarConcepto(it.description), tarifa: null, centroCosto: cc,
     });
-    for (const t of (it.taxes as Obj[]) ?? []) {
-      const pct = t.percentage ?? t.rate;
-      out.push({
-        terceroNit: nit,
-        tipoDocumento: tipo,
-        fecha,
-        cuenta: "",
-        naturaleza: naturalezaPorDefecto(tipo, "iva"),
-        valor: num(t.value),
-        rol: "iva",
-        concepto: "",
-        tarifa: pct == null ? null : Math.round(num(pct) * 100) / 100,
-        centroCosto: cc,
-      });
-    }
+    for (const t of (it.taxes as Obj[]) ?? []) out.push(impuesto(t));
   }
-  for (const r of ((doc.retentions ?? doc.withholdings) as Obj[]) ?? []) {
-    const rol = rolRetencion(r);
-    const pct = r.percentage ?? r.rate;
-    out.push({
-      terceroNit: nit,
-      tipoDocumento: tipo,
-      fecha,
-      cuenta: "",
-      naturaleza: naturalezaPorDefecto(tipo, rol),
-      valor: num(r.value),
-      rol,
-      concepto: "",
-      tarifa: pct == null ? null : Math.round(num(pct) * 100) / 100,
-      centroCosto: cc,
-    });
-  }
+  for (const r of ((doc.retentions ?? doc.withholdings) as Obj[]) ?? []) out.push(impuesto(r));
   return out;
 }
 

@@ -34,6 +34,10 @@ export function naturalezaPorDefecto(tipo: TipoDocumento, rol: RolLinea): "D" | 
     case "reteica":
     case "reteiva":
       return esVenta ? "D" : "C"; // venta: retención a favor; compra: retención por pagar
+    case "impoconsumo":
+      return esVenta ? "C" : "D";
+    case "autorretencion":
+      return "C";
     case "contrapartida_cxp":
       return "C";
     case "contrapartida_cxc":
@@ -56,4 +60,17 @@ export function normalizarConcepto(s: unknown): string {
     .filter((w) => w.length > 2)
     .slice(0, 6)
     .join(" ");
+}
+
+/** Clasifica un impuesto/retención de Siigo (taxes[].type o nombre) en un rol de línea. */
+export function rolPorTipoImpuesto(tipo: unknown, nombre: unknown = ""): RolLinea {
+  const t = `${tipo ?? ""} ${nombre ?? ""}`
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/reteiva|rete iva|iva retenido/.test(t)) return "reteiva";
+  if (/reteica|rete ica|ica retenido/.test(t)) return "reteica";
+  if (/autoret|autorret/.test(t)) return "autorretencion";
+  if (/retefuente|rete fuente|retencion en la fuente|retencion/.test(t)) return "retefuente";
+  if (/consumo|impoconsumo|\binc\b/.test(t)) return "impoconsumo";
+  if (/\biva\b/.test(t)) return "iva";
+  return "otro";
 }

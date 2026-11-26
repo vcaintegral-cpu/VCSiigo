@@ -16,6 +16,8 @@ export type RolLinea =
   | "retefuente"
   | "reteica"
   | "reteiva"
+  | "autorretencion"
+  | "impoconsumo"
   | "contrapartida_cxp"
   | "contrapartida_cxc"
   | "banco_caja"

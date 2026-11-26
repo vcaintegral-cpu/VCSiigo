@@ -92,3 +92,29 @@ describe("protecciones del worker", () => {
     t = 1500; expect(b.isOpen()).toBe(false);
   });
 });
+
+import { buildDebtPaymentReceipt, construirEgreso } from "../src/lib/egresos/payment-receipt";
+import { parseCxp } from "../src/lib/egresos/siigo-cxp";
+
+describe("formas reales de Siigo (empresa de prueba, 26-nov-2026)", () => {
+  it("parsea accounts-payable (proveedor sin sucursal)", () => {
+    const d = parseCxp({ due: { prefix: "Q5F6", consecutive: 1234, quote: 1, date: "2026-12-05T12:00:00.0000000+00:00", balance: 250000 }, provider: { id: "x", identification: "900123456", name: "ACME" } });
+    expect(d).toMatchObject({ prefix: "Q5F6", consecutive: 1234, dueDate: "2026-12-05", supplierId: "900123456", supplierBranch: 0, balance: 250000 });
+    expect(parseCxp({ due: {}, provider: {} })).toBeNull();
+  });
+  it("DebtPayment: items[{due,value}] + payment{id,value}", () => {
+    const dues = [due(1, 100000), due(2, 50000)];
+    const r = matchPayments([mov("m1", 150000)], [pay("p1", 1, 100000), pay("p2", 2, 50000)], dues);
+    const body = buildDebtPaymentReceipt(r.vouchers[0]!, { documentId: 7714, paymentMethodId: 5636, bankAccountCode: "", cxpAccountCode: "" });
+    expect(body).toMatchObject({ type: "DebtPayment", payment: { id: 5636, value: 150000 } });
+    expect(body.items).toHaveLength(2);
+    expect(body.items[0]).toEqual({ due: { prefix: "FC-1", consecutive: 1, quote: 1, date: "2026-11-30" }, value: 100000 });
+    expect(() => buildDebtPaymentReceipt(r.vouchers[0]!, { documentId: 1, bankAccountCode: "", cxpAccountCode: "" })).toThrow(/medio de pago/);
+  });
+  it("construirEgreso: simple sin ajustes, avanzado con ajustes", () => {
+    const r = matchPayments([mov("m1", 100000)], [pay("p1", 1, 100000)], [due(1, 100000)]);
+    const setup = { documentId: 1, paymentMethodId: 9, bankAccountCode: "11100501", cxpAccountCode: "23359501" };
+    expect(construirEgreso(r.vouchers[0]!, setup).type).toBe("DebtPayment");
+    expect(construirEgreso(r.vouchers[0]!, setup, [{ accountCode: "23652501", movement: "Credit", value: 4000, description: "Rete" }]).type).toBe("Detailed");
+  });
+});
