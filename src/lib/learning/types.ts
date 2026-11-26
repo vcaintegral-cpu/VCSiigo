@@ -35,6 +35,8 @@ export type LineaContable = {
   rol: RolLinea;
   concepto: string; // normalizado
   tarifa: number | null; // % observado para iva / retenciones
+  /** ID del impuesto en Siigo (taxes[].id). Crítico: hay varios IVA 19 % distintos (compras, servicios, gastos...). */
+  impuestoId: string | null;
   centroCosto: string | null;
 };
 
@@ -46,6 +48,7 @@ export type ReglaCalculada = {
   cuentaPuc: string;
   naturaleza: "D" | "C";
   tarifa: number | null;
+  impuestoId: string; // '' si no aplica
   centroCosto: string | null;
   evidenciaN: number;
   totalN: number;

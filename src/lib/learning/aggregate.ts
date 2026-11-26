@@ -28,7 +28,7 @@ export function agregarReglas(lineas: LineaContable[], hoy = new Date()): ReglaC
       grupos.set(gk, g);
     }
     g.total++;
-    const pk = `${l.cuenta}|${l.naturaleza}`;
+    const pk = `${l.cuenta}|${l.naturaleza}|${l.impuestoId ?? ""}`;
     let a = g.patrones.get(pk);
     if (!a) {
       a = { n: 0, tarifas: [], ccs: [], min: null, max: null };
@@ -53,7 +53,7 @@ export function agregarReglas(lineas: LineaContable[], hoy = new Date()): ReglaC
   for (const [gk, g] of grupos) {
     const concepto = gk.split("|")[3];
     for (const [pk, a] of g.patrones) {
-      const [cuenta, naturaleza] = pk.split("|");
+      const [cuenta, naturaleza, impuestoId] = pk.split("|");
       reglas.push({
         terceroNit: g.meta.terceroNit,
         tipoDocumento: g.meta.tipoDocumento,
@@ -62,6 +62,7 @@ export function agregarReglas(lineas: LineaContable[], hoy = new Date()): ReglaC
         cuentaPuc: cuenta,
         naturaleza: naturaleza as "D" | "C",
         tarifa: moda(a.tarifas),
+        impuestoId: impuestoId ?? "",
         centroCosto: moda(a.ccs),
         evidenciaN: a.n,
         totalN: g.total,

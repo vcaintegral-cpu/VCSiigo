@@ -7,17 +7,16 @@ import type { LineaContable, ReglaCalculada, TipoDocumento } from "./types";
 type Obj = Record<string, any>;
 
 /** Recursos históricos a descargar. `paramDesde` es el filtro de fecha de Siigo (VERIFICAR nombre en docs). */
-export const RECURSOS_HISTORICOS: { recurso: TipoDocumento; path: string }[] = [
+export const RECURSOS_HISTORICOS: { recurso: TipoDocumento; path: string; /** filtro de fecha que SÍ respeta el listado (verificado 26-nov-2026); undefined = no filtra, se recorre todo */ paramDesde?: string }[] = [
   // Compras y DS: el listado NO está documentado, pero existe (verificado con una empresa real el 26-nov-2026).
-  { recurso: "compra", path: SIIGO_ENDPOINTS.compras },
+  { recurso: "compra", path: SIIGO_ENDPOINTS.compras }, // sin filtro de fecha: se recorre completo
   { recurso: "documento_soporte", path: SIIGO_ENDPOINTS.documentosSoporte },
-  { recurso: "venta", path: SIIGO_ENDPOINTS.ventas },
-  { recurso: "nota_credito", path: SIIGO_ENDPOINTS.notasCredito },
-  { recurso: "comprobante", path: SIIGO_ENDPOINTS.comprobantes },
-  { recurso: "recibo_caja", path: SIIGO_ENDPOINTS.recibosCaja },
-  { recurso: "recibo_pago", path: SIIGO_ENDPOINTS.recibosPago },
+  { recurso: "venta", path: SIIGO_ENDPOINTS.ventas, paramDesde: "created_start" },
+  { recurso: "nota_credito", path: SIIGO_ENDPOINTS.notasCredito, paramDesde: "created_start" },
+  { recurso: "comprobante", path: SIIGO_ENDPOINTS.comprobantes, paramDesde: "created_start" }, // date_start NO filtra en journals
+  { recurso: "recibo_caja", path: SIIGO_ENDPOINTS.recibosCaja, paramDesde: "created_start" },
+  { recurso: "recibo_pago", path: SIIGO_ENDPOINTS.recibosPago, paramDesde: "created_start" },
 ];
-const PARAM_DESDE = "date_start"; // verificado en docs (invoices, journals, vouchers)
 
 export type ResultadoDescarga = {
   completo: boolean;
@@ -40,7 +39,7 @@ export async function descargarHistorico(
 
   if (opts.reiniciar) await db.from("sync_estado").delete().eq("org_id", orgId).in("recurso", RECURSOS_HISTORICOS.map((r) => r.recurso));
 
-  for (const { recurso, path } of RECURSOS_HISTORICOS) {
+  for (const { recurso, path, paramDesde } of RECURSOS_HISTORICOS) {
     const { data: est } = await db.from("sync_estado").select("*").eq("org_id", orgId).eq("recurso", recurso).maybeSingle();
     if (est?.completado) {
       out.porRecurso[recurso] = { descargados: est.total_descargado, completado: true };
@@ -53,7 +52,7 @@ export async function descargarHistorico(
 
     try {
       while (Date.now() - inicio < presupuesto) {
-        const { results, hasMore } = await siigo.page<Obj>(path, pagina, { [PARAM_DESDE]: opts.desde }, 100);
+        const { results, hasMore } = await siigo.page<Obj>(path, pagina, paramDesde ? { [paramDesde]: opts.desde } : {}, 100);
         const filas = results
           .filter((d) => !d.date || String(d.date).slice(0, 10) >= opts.desde)
           .map((d) => ({
@@ -132,19 +131,19 @@ export async function guardarReglas(
   origen: "historico" | "auxiliar_csv", reemplazar: boolean,
 ) {
   if (reemplazar) await db.from("reglas_contables").delete().eq("org_id", orgId).eq("bloqueada", false).eq("origen", origen);
-  const { data: bloq } = await db.from("reglas_contables").select("tercero_nit,tipo_documento,rol_linea,concepto,cuenta_puc,naturaleza").eq("org_id", orgId).eq("bloqueada", true);
+  const { data: bloq } = await db.from("reglas_contables").select("tercero_nit,tipo_documento,rol_linea,concepto,cuenta_puc,naturaleza,impuesto_id").eq("org_id", orgId).eq("bloqueada", true);
   const k = (a: string[]) => a.join("|");
-  const bloqueadas = new Set((bloq ?? []).map((b) => k([b.tercero_nit, b.tipo_documento, b.rol_linea, b.concepto, b.cuenta_puc, b.naturaleza])));
+  const bloqueadas = new Set((bloq ?? []).map((b) => k([b.tercero_nit, b.tipo_documento, b.rol_linea, b.concepto, b.cuenta_puc, b.naturaleza, b.impuesto_id])));
   const filas = reglas
-    .filter((r) => !bloqueadas.has(k([r.terceroNit, r.tipoDocumento, r.rolLinea, r.concepto, r.cuentaPuc, r.naturaleza])))
+    .filter((r) => !bloqueadas.has(k([r.terceroNit, r.tipoDocumento, r.rolLinea, r.concepto, r.cuentaPuc, r.naturaleza, r.impuestoId])))
     .map((r) => ({
       org_id: orgId, tercero_nit: r.terceroNit, tipo_documento: r.tipoDocumento, rol_linea: r.rolLinea,
-      concepto: r.concepto, cuenta_puc: r.cuentaPuc, naturaleza: r.naturaleza, tarifa: r.tarifa,
+      concepto: r.concepto, cuenta_puc: r.cuentaPuc, naturaleza: r.naturaleza, tarifa: r.tarifa, impuesto_id: r.impuestoId,
       centro_costo: r.centroCosto, evidencia_n: r.evidenciaN, total_n: r.totalN, confianza: r.confianza,
       primera_vez: r.primeraVez, ultima_vez: r.ultimaVez, origen, actualizada_en: new Date().toISOString(),
     }));
   for (const lote of chunk(filas, 500)) {
-    const { error } = await db.from("reglas_contables").upsert(lote, { onConflict: "org_id,tercero_nit,tipo_documento,rol_linea,concepto,cuenta_puc,naturaleza" });
+    const { error } = await db.from("reglas_contables").upsert(lote, { onConflict: "org_id,tercero_nit,tipo_documento,rol_linea,concepto,cuenta_puc,naturaleza,impuesto_id" });
     if (error) throw new Error(error.message);
   }
   return filas.length;

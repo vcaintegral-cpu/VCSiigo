@@ -79,6 +79,22 @@ async function main() {
   }
   console.log("OK    prueba de filtros de fecha");
 
+  // Orden de los listados sin filtro de fecha y tamano maximo de pagina (para sincronizar solo lo nuevo)
+  for (const [nombre, ruta] of [["compras", E.compras], ["documentos soporte", E.documentosSoporte]] as const) {
+    try {
+      const p1: any = await siigo.get(ruta, { page: 1, page_size: 200 });
+      const total = p1?.pagination?.total_results ?? 0;
+      const ult: any = await siigo.get(ruta, { page: Math.max(1, Math.ceil(total / 100)), page_size: 100 });
+      const f = (d: any) => d ? { date: d.date, created: d.metadata?.created, number: d.number } : null;
+      salida.orden = { ...(salida.orden ?? {}), [nombre]: {
+        page_size_200_devuelve: p1?.results?.length, total,
+        primer_documento_pagina_1: f(p1?.results?.[0]),
+        ultimo_documento_ultima_pagina: f(ult?.results?.[ult.results.length - 1]),
+      } };
+      console.log(`OK    orden de ${nombre}`);
+    } catch (e: any) { salida.orden = { ...(salida.orden ?? {}), [nombre]: { error: e?.status } }; }
+  }
+
   // Detalle por id (forma completa de un documento)
   for (const [nombre, base, key] of [["compra", E.compras, "LISTADO compras"], ["documento soporte", E.documentosSoporte, "LISTADO documentos soporte"], ["comprobante contable", E.comprobantes, "comprobantes contables"], ["recibo de pago", E.recibosPago, "recibos de pago/egreso"]] as const) {
     const id = muestras[key];

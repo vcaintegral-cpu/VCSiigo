@@ -118,3 +118,21 @@ describe("documentos reales de Siigo (formas verificadas)", () => {
     expect(rolPorTipoImpuesto("Impoconsumo")).toBe("impoconsumo");
   });
 });
+
+describe("ID de impuesto (varios IVA 19 % distintos en Siigo)", () => {
+  it("aprende qué impuesto usa cada proveedor, no solo la tarifa", () => {
+    const mk = (id: number) => ({ date: "2026-10-05", supplier: { identification: "800123456" },
+      items: [{ type: "Account", code: "51959501", description: "Servicio", total: 100, taxes: [{ id, name: "IVA", type: "IVA", percentage: 19, value: 19 }] }] });
+    const lineas = [41566, 41566, 41566, 8977].flatMap((id) => lineasDeFactura("compra", mk(id)));
+    const iva = agregarReglas(lineas).filter((r) => r.rolLinea === "iva" && r.concepto === "");
+    const principal = iva.find((r) => r.impuestoId === "41566")!;
+    expect(principal.evidenciaN).toBe(3);
+    expect(principal.tarifa).toBe(19);
+    expect(iva.find((r) => r.impuestoId === "8977")?.evidenciaN).toBe(1);
+    expect(principal.confianza).toBeGreaterThan(iva.find((r) => r.impuestoId === "8977")!.confianza);
+  });
+  it("comprobantes: la línea de impuesto aporta id y porcentaje", () => {
+    const r = lineasDeAsiento("comprobante", { date: "2026-10-01", items: [{ account: { code: "24082502", movement: "Debit" }, customer: { identification: "900111222" }, tax: { id: 8977, type: "IVA", percentage: 19, base_value: 1000 }, value: 190 }] });
+    expect(r[0]).toMatchObject({ impuestoId: "8977", tarifa: 19, rol: "iva" });
+  });
+});

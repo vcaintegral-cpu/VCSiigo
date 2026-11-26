@@ -93,6 +93,7 @@ export function lineasDeAuxiliarCsv(csv: string, tipoForzado?: TipoDocumento) {
       rol: rolPorCuenta(cuenta),
       concepto: col.detalle ? normalizarConcepto(r[col.detalle]) : "",
       tarifa: null,
+      impuestoId: null,
       centroCosto: col.centro ? String(r[col.centro] || "") || null : null,
     };
     (porDoc.get(key) ?? porDoc.set(key, []).get(key)!).push(l);

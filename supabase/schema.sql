@@ -220,6 +220,7 @@ create table if not exists reglas_contables (
   cuenta_puc      text not null,
   naturaleza      text not null check (naturaleza in ('D','C')),
   tarifa          numeric(9,4),                      -- % observado (IVA/retención) cuando aplica
+  impuesto_id     text not null default '',          -- ID del impuesto en Siigo (hay varios IVA 19 % distintos)
   centro_costo    text,
   evidencia_n     int not null,                      -- veces que este patrón aparece
   total_n         int not null,                      -- veces que el grupo (tercero+tipo+rol) aparece
@@ -229,7 +230,7 @@ create table if not exists reglas_contables (
   origen          text not null default 'historico', -- historico | manual | auxiliar_csv
   bloqueada       boolean not null default false,    -- true = el contador la fijó; el aprendizaje no la sobreescribe
   actualizada_en  timestamptz not null default now(),
-  unique (org_id, tercero_nit, tipo_documento, rol_linea, concepto, cuenta_puc, naturaleza)
+  constraint reglas_unicas unique (org_id, tercero_nit, tipo_documento, rol_linea, concepto, cuenta_puc, naturaleza, impuesto_id)
 );
 create index if not exists reglas_busqueda_idx on reglas_contables(org_id, tercero_nit, tipo_documento);
 
@@ -477,3 +478,16 @@ create policy excepciones_select on excepciones for select using (es_miembro(org
 drop policy if exists jobs_select on jobs;
 create policy jobs_select on jobs for select using (org_id is not null and es_miembro(org_id));
 -- escrituras: solo servidor/worker (service_role)
+
+-- ---------------------------------------------------------------------
+-- MIGRACIÓN (solo si ya había ejecutado una versión anterior de este archivo): impuesto_id en reglas
+-- ---------------------------------------------------------------------
+alter table reglas_contables add column if not exists impuesto_id text not null default '';
+do $$ declare c record; begin
+  for c in select conname from pg_constraint where conrelid = 'reglas_contables'::regclass and contype = 'u' and conname <> 'reglas_unicas' loop
+    execute format('alter table reglas_contables drop constraint %I', c.conname);
+  end loop;
+  if not exists (select 1 from pg_constraint where conname = 'reglas_unicas') then
+    alter table reglas_contables add constraint reglas_unicas unique (org_id, tercero_nit, tipo_documento, rol_linea, concepto, cuenta_puc, naturaleza, impuesto_id);
+  end if;
+end $$;

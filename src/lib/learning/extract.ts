@@ -45,7 +45,8 @@ export function lineasDeFactura(tipo: TipoDocumento, doc: Obj): LineaContable[] 
     const pct = t.percentage ?? t.rate;
     return {
       terceroNit: nit, tipoDocumento: tipo, fecha, cuenta: "", naturaleza: naturalezaPorDefecto(tipo, rol),
-      valor: num(t.value), rol, concepto: "", tarifa: pct == null ? null : Math.round(num(pct) * 100) / 100, centroCosto: cc,
+      valor: num(t.value), rol, concepto: "", tarifa: pct == null ? null : Math.round(num(pct) * 100) / 100,
+      impuestoId: t.id != null ? String(t.id) : null, centroCosto: cc,
     };
   };
 
@@ -58,7 +59,7 @@ export function lineasDeFactura(tipo: TipoDocumento, doc: Obj): LineaContable[] 
     out.push({
       terceroNit: nit, tipoDocumento: tipo, fecha, cuenta, naturaleza: naturalezaPorDefecto(tipo, rol),
       valor: num(it.total ?? num(it.price) * (num(it.quantity) || 1)), rol,
-      concepto: normalizarConcepto(it.description), tarifa: null, centroCosto: cc,
+      concepto: normalizarConcepto(it.description), tarifa: null, impuestoId: null, centroCosto: cc,
     });
     for (const t of (it.taxes as Obj[]) ?? []) out.push(impuesto(t));
   }
@@ -88,7 +89,9 @@ export function lineasDeAsiento(tipo: TipoDocumento, doc: Obj): LineaContable[] 
       valor: num(it.value),
       rol: rolPorCuenta(cuenta),
       concepto: normalizarConcepto(it.description),
-      tarifa: null,
+      // En comprobantes la línea de impuesto trae tax{id, percentage, base_value}
+      tarifa: it.tax?.percentage != null ? Math.round(num(it.tax.percentage) * 100) / 100 : null,
+      impuestoId: it.tax?.id != null ? String(it.tax.id) : null,
       centroCosto: centro(it.cost_center ?? doc.cost_center),
     });
   }
