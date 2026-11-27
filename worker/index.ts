@@ -6,6 +6,7 @@
  */
 import { supabaseAdmin } from "../src/lib/supabase/admin";
 import { HANDLERS, type Job } from "../src/lib/worker/handlers";
+import { programar } from "../src/lib/worker/scheduler";
 
 const WORKER = `${process.env.HOSTNAME ?? "local"}-${process.pid}`;
 const POLL_MS = 3_000;
@@ -39,10 +40,15 @@ async function ejecutar(job: Job) {
 async function main() {
   console.log(`[worker] ${WORKER} iniciado`);
   let ultimoLatido = 0;
+  let ultimaProgramacion = 0;
   while (!parar) {
     if (Date.now() - ultimoLatido > 30_000) {
       await db.from("worker_latidos").upsert({ worker: WORKER, ultimo_latido: new Date().toISOString() });
       ultimoLatido = Date.now();
+    }
+    if (Date.now() - ultimaProgramacion > 10 * 60_000) {
+      ultimaProgramacion = Date.now();
+      try { const n = await programar(db); if (n) console.log(`[worker] programados ${n} trabajos nocturnos`); } catch (e: any) { console.error("[worker] programar:", e?.message ?? e); }
     }
     const { data, error } = await db.rpc("reclamar_jobs", { p_worker: WORKER, p_limite: CONCURRENCIA });
     if (error) { console.error("[worker] reclamar_jobs:", error.message); await dormir(10_000); continue; }

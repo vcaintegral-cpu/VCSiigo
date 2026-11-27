@@ -58,3 +58,9 @@ Corrige algunas conclusiones previas basadas solo en la documentación.
 - **Varios impuestos con el mismo porcentaje:** hay 4 IVA al 19 % (ids 8977 "IVA compras", 41566 "IVA Servicios", 41617 "IVA Gastos", 42965 "IVA importación") e incluso "IVA Servicios 5%" e "IVA Gastos 5%" figuran con `percentage: 19`. **La tarifa no identifica el impuesto**: el aprendizaje guarda el `impuesto_id` que cada proveedor ha usado.
 - **Tipos de comprobante:** cada empresa tiene varios por clase, activos e inactivos; se elige por configuración (`active:true`). Esta empresa registra egresos también como comprobante contable "Comprobante Egreso" (CC código 9), "Ajuste de tesorería" (ADT) y "Traslado de dinero" (9901), útiles para la conciliación bancaria.
 - **Retefuente en línea:** ids como 8979 "Honorarios 11%", 8982 "Servicios 4%", 8983 "Compras 2.5%", 8994 "Servicios 3.5%". ReteICA y ReteIVA existen como impuestos separados.
+
+## ✅ Diagnóstico v3 (27-nov-2026): orden, paginación y balance
+- **Compras y documentos soporte se listan de MÁS NUEVO a MÁS ANTIGUO** (página 1 = creados más recientemente; última página = 2019/2020 en la empresa de prueba). Sincronización nocturna incremental: leer páginas desde la 1 hasta encontrar una página completa de documentos ya conocidos (implementado en `sincronizarNuevos`). Un barrido completo semanal cubre ediciones de documentos antiguos.
+- **Tamaño máximo de página: 100** (con `page_size=200` devuelve 100).
+- **`POST /v1/test-balance-report` funciona** y devuelve `{ file_id, file_url }` (Excel en un blob de Azure). Es la vía para obtener el PUC con saldos y el balance por tercero sin que el usuario cargue archivos. La estructura del Excel se verifica con `npm run diagnostico -- --balance` (v4).
+- Los totales de ventas y recibos cambian entre corridas: la empresa tiene movimiento diario; las pruebas de escritura deben usar un mes cerrado o documentos fácilmente reversibles.

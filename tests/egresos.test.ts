@@ -118,3 +118,19 @@ describe("formas reales de Siigo (empresa de prueba, 26-nov-2026)", () => {
     expect(construirEgreso(r.vouchers[0]!, setup, [{ accountCode: "23652501", movement: "Credit", value: 4000, description: "Rete" }]).type).toBe("Detailed");
   });
 });
+
+import { diaLocal, enVentana } from "../src/lib/worker/scheduler";
+describe("programador nocturno (hora de Colombia, UTC-5)", () => {
+  it("ventana 18:00–07:00 cruza la medianoche", () => {
+    expect(enVentana(new Date("2026-11-27T04:12:00Z"), "18:00", "07:00")).toBe(true); // 23:12 Bogotá
+    expect(enVentana(new Date("2026-11-27T11:30:00Z"), "18:00", "07:00")).toBe(true); // 06:30 Bogotá
+    expect(enVentana(new Date("2026-11-27T12:30:00Z"), "18:00", "07:00")).toBe(false); // 07:30 Bogotá
+  });
+  it("fuera de la ventana de día", () => {
+    expect(enVentana(new Date("2026-11-27T17:00:00Z"), "18:00", "07:00")).toBe(false); // 12:00 Bogotá
+    expect(enVentana(new Date("2026-11-27T23:30:00Z"), "18:00", "07:00")).toBe(true); // 18:30 Bogotá
+  });
+  it("el día local usa la zona de Colombia", () => {
+    expect(diaLocal(new Date("2026-11-27T03:00:00Z"))).toBe("2026-11-26"); // 22:00 del 26
+  });
+});

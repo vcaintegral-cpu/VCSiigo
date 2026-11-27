@@ -327,6 +327,7 @@ create policy reglas_delete on reglas_contables for delete
 create table if not exists empresa_config (
   org_id uuid primary key references organizaciones(id) on delete cascade,
   piloto_activo boolean not null default false,          -- interruptor de emergencia
+  sync_activo boolean not null default true,             -- sincronización nocturna de lectura (no envía nada a Siigo)
   modo text not null default 'sombra' check (modo in ('sombra','real')),
   umbral_confianza numeric(4,3) not null default 0.900,
   min_evidencia int not null default 5,
@@ -491,3 +492,5 @@ do $$ declare c record; begin
     alter table reglas_contables add constraint reglas_unicas unique (org_id, tercero_nit, tipo_documento, rol_linea, concepto, cuenta_puc, naturaleza, impuesto_id);
   end if;
 end $$;
+
+alter table empresa_config add column if not exists sync_activo boolean not null default true;

@@ -7,7 +7,8 @@
  * (impuestos y tipos de comprobante). Los datos crudos nunca se escriben a disco.
  */
 import { writeFileSync } from "node:fs";
-import { forma } from "../src/lib/diagnostico";
+import ExcelJS from "exceljs";
+import { forma, formaHoja } from "../src/lib/diagnostico";
 import { SIIGO_ENDPOINTS as E, siigoFromEnv } from "../src/lib/siigo";
 
 const hoy = new Date();
@@ -104,11 +105,35 @@ async function main() {
   }
 
   if (process.argv.includes("--balance")) {
-    try {
-      const r: any = await siigo.request("POST", E.balancePrueba, { body: { account_start: "", account_end: "", year: hoy.getFullYear(), month_start: 1, month_end: 13, includes_tax_difference: false } });
-      salida.balance = { ok: true, devuelve_url: !!r?.file_url, campos: Object.keys(r ?? {}) };
-      console.log("OK    balance de prueba (solo se verifica que devuelva enlace)");
-    } catch (e: any) { salida.balance = { ok: false, http: e?.status, error: JSON.stringify(e?.body ?? e?.message).slice(0, 300) }; console.log(`FALLA balance -> HTTP ${e?.status}`); }
+    // Balance de prueba general y por tercero: se genera el Excel, se descarga SOLO en su computador y
+    // se guarda unicamente su FORMA (encabezados y codigos de cuenta; sin nombres ni cifras).
+    for (const [nombre, ruta] of [["general", E.balancePrueba], ["por tercero", E.balancePruebaTercero]] as const) {
+      try {
+        const r: any = await siigo.request("POST", ruta, { body: { account_start: "", account_end: "", year: hoy.getFullYear(), month_start: 1, month_end: 13, includes_tax_difference: false } });
+        const info: any = { ok: true, campos: Object.keys(r ?? {}) };
+        if (r?.file_url) {
+          const res = await fetch(r.file_url);
+          info.descarga_http = res.status;
+          if (res.ok) {
+            const wb = new ExcelJS.Workbook();
+            await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as any);
+            info.hojas = wb.worksheets.map((ws) => {
+              const filas: unknown[][] = [];
+              ws.eachRow({ includeEmpty: false }, (row, n) => {
+                if (n > 14) return;
+                filas.push((row.values as unknown[]).slice(1).map((v: any) => (v && typeof v === "object" ? (v.result ?? v.text ?? "") : v)));
+              });
+              return { nombre: ws.name, filas: ws.rowCount, columnas: ws.columnCount, muestra: formaHoja(filas, 14) };
+            });
+          }
+        }
+        (salida.balance_excel ??= {})[nombre] = info;
+        console.log(`OK    balance de prueba ${nombre}`);
+      } catch (e: any) {
+        (salida.balance_excel ??= {})[nombre] = { ok: false, http: e?.status, error: JSON.stringify(e?.body ?? e?.message).slice(0, 300) };
+        console.log(`FALLA balance ${nombre} -> HTTP ${e?.status}`);
+      }
+    }
   }
 
   writeFileSync("diagnostico-siigo.json", JSON.stringify(salida, null, 2), "utf8");

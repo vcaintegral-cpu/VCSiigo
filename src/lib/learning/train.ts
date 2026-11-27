@@ -24,6 +24,12 @@ export type ResultadoDescarga = {
   porRecurso: Record<string, { descargados: number; completado: boolean; error?: string }>;
 };
 
+/** Fila de siigo_documentos a partir de un documento crudo de Siigo. */
+const filaDocumento = (orgId: string, recurso: TipoDocumento, d: Obj) => ({
+  org_id: orgId, tipo: recurso, siigo_id: String(d.id), nombre: d.name ?? null,
+  fecha: d.date ? String(d.date).slice(0, 10) : null, tercero_nit: nitDelDocumento(d) || null, total: d.total ?? null, crudo: d,
+});
+
 const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 
 /** FASE 1 · Descarga reanudable del histórico (respeta un presupuesto de tiempo para serverless). */
@@ -55,16 +61,7 @@ export async function descargarHistorico(
         const { results, hasMore } = await siigo.page<Obj>(path, pagina, paramDesde ? { [paramDesde]: opts.desde } : {}, 100);
         const filas = results
           .filter((d) => !d.date || String(d.date).slice(0, 10) >= opts.desde)
-          .map((d) => ({
-            org_id: orgId,
-            tipo: recurso,
-            siigo_id: String(d.id),
-            nombre: d.name ?? null,
-            fecha: d.date ? String(d.date).slice(0, 10) : null,
-            tercero_nit: nitDelDocumento(d) || null,
-            total: d.total ?? null,
-            crudo: d,
-          }));
+          .map((d) => filaDocumento(orgId, recurso, d));
         for (const lote of chunk(filas, 200)) {
           const { error: e } = await db.from("siigo_documentos").upsert(lote, { onConflict: "org_id,tipo,siigo_id" });
           if (e) throw new Error(e.message);
@@ -185,4 +182,42 @@ export async function sincronizarMaestros(db: SupabaseClient, siigo: SiigoClient
   }
   // La API de Siigo NO expone el PUC: se obtiene del balance de prueba (Excel) o de la carga manual.
   return resumen;
+}
+
+/**
+ * Sincronización NOCTURNA incremental (verificado 26/27-nov-2026):
+ *  - compras y documentos soporte se listan de MÁS NUEVO a MÁS ANTIGUO y no admiten filtro de fecha:
+ *    se leen páginas desde la 1 hasta encontrar una página completa ya conocida.
+ *  - el resto (ventas, comprobantes, RC, RP, notas crédito) respeta `created_start`.
+ * Requiere que el entrenamiento inicial (descargarHistorico) haya terminado.
+ */
+export async function sincronizarNuevos(db: SupabaseClient, siigo: SiigoClient, orgId: string, opts: { maxPaginas?: number } = {}) {
+  const maxPaginas = opts.maxPaginas ?? 40;
+  const out: Record<string, { nuevos: number; paginas: number; error?: string }> = {};
+  for (const { recurso, path, paramDesde } of RECURSOS_HISTORICOS) {
+    const { data: est } = await db.from("sync_estado").select("completado,actualizado_en").eq("org_id", orgId).eq("recurso", recurso).maybeSingle();
+    if (!est?.completado) { out[recurso] = { nuevos: 0, paginas: 0, error: "entrenamiento inicial pendiente" }; continue; }
+    const desde = new Date(new Date(est.actualizado_en).getTime() - 2 * 86400000).toISOString().slice(0, 10);
+    let nuevos = 0, paginas = 0;
+    try {
+      for (let pagina = 1; pagina <= maxPaginas; pagina++) {
+        const { results, hasMore } = await siigo.page<Obj>(path, pagina, paramDesde ? { [paramDesde]: desde } : {}, 100);
+        paginas++;
+        if (!results.length) break;
+        const ids = results.map((d) => String(d.id));
+        const { data: conocidos } = await db.from("siigo_documentos").select("siigo_id").eq("org_id", orgId).eq("tipo", recurso).in("siigo_id", ids);
+        const sabidos = new Set((conocidos ?? []).map((c) => c.siigo_id));
+        nuevos += ids.filter((i) => !sabidos.has(i)).length;
+        const { error } = await db.from("siigo_documentos").upsert(results.map((d) => filaDocumento(orgId, recurso, d)), { onConflict: "org_id,tipo,siigo_id" });
+        if (error) throw new Error(error.message);
+        if (!hasMore) break;
+        if (!paramDesde && sabidos.size === ids.length) break; // página completa ya conocida: no hay más nuevos
+      }
+      await db.from("sync_estado").update({ actualizado_en: new Date().toISOString(), error: null, total_descargado: undefined }).eq("org_id", orgId).eq("recurso", recurso);
+      out[recurso] = { nuevos, paginas };
+    } catch (e: any) {
+      out[recurso] = { nuevos, paginas, error: e?.message ?? String(e) };
+    }
+  }
+  return out;
 }

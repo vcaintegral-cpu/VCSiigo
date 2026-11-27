@@ -11,3 +11,13 @@ describe("forma (redactor)", () => {
     expect(r[0].supplier.identification).toMatch(/^<string:/);
   });
 });
+
+import { formaHoja } from "../src/lib/diagnostico";
+describe("formaHoja", () => {
+  it("conserva encabezados y cuentas, oculta nombres y valores", () => {
+    const f = formaHoja([["EMPRESA ACME SAS", null], ["Cuenta", "Nombre", "Saldo inicial", "Débito"], ["11100501", "BANCO DE ALGO", 1500000, 20]]);
+    expect(JSON.stringify(f)).not.toMatch(/ACME|BANCO DE ALGO|1500000/);
+    expect(f[1]).toEqual(["Cuenta", "Nombre", "Saldo inicial", "Débito"]);
+    expect(f[2]).toEqual(["11100501", "<string:13>", "<number>", "<number>"]);
+  });
+});

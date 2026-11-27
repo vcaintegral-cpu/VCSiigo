@@ -1,4 +1,4 @@
-import { descargarHistorico, reconstruirReglas, sincronizarMaestros } from "../learning/train";
+import { descargarHistorico, reconstruirReglas, sincronizarMaestros, sincronizarNuevos } from "../learning/train";
 import { siigoDeOrg } from "../siigo-org";
 import { supabaseAdmin } from "../supabase/admin";
 import { Breaker } from "./breaker";
@@ -19,6 +19,25 @@ export const HANDLERS: Record<string, Handler> = {
     if (!job.org_id) return { ok: false, error: "Falta org_id" };
     const resumen = await sincronizarMaestros(supabaseAdmin(), await siigoDeOrg(job.org_id), job.org_id);
     return Object.values(resumen).some((v) => typeof v === "string") ? { ok: false, error: JSON.stringify(resumen) } : { ok: true };
+  },
+
+  /** Sincronización nocturna incremental; si llegan documentos nuevos, re-encola la reconstrucción de reglas. */
+  "sync.incremental": async (job) => {
+    if (!job.org_id) return { ok: false, error: "Falta org_id" };
+    const b = breakerDe(job.org_id);
+    if (b.isOpen()) return { ok: false, error: "Disyuntor abierto para la empresa", reintentarSeg: Math.ceil(b.retryAfterMs() / 1000) };
+    const r = await sincronizarNuevos(supabaseAdmin(), await siigoDeOrg(job.org_id), job.org_id);
+    const errores = Object.entries(r).filter(([, v]) => v.error && v.error !== "entrenamiento inicial pendiente");
+    b.record(errores.length === 0);
+    if (errores.length) return { ok: false, error: JSON.stringify(errores) };
+    const nuevos = Object.values(r).reduce((s, v) => s + v.nuevos, 0);
+    return nuevos > 0 ? { ok: true, siguiente: { tipo: "aprendizaje.reconstruir", payload: {}, clave: `reglas:${job.org_id}` } } : { ok: true };
+  },
+
+  "aprendizaje.reconstruir": async (job) => {
+    if (!job.org_id) return { ok: false, error: "Falta org_id" };
+    await reconstruirReglas(supabaseAdmin(), job.org_id);
+    return { ok: true };
   },
 
   /** Descarga reanudable del histórico; se re-encola a sí mismo hasta terminar y luego reconstruye reglas. */
