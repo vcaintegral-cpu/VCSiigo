@@ -71,3 +71,6 @@ Corrige algunas conclusiones previas basadas solo en la documentación.
 - **Por tercero:** igual más `Identificación | (Sucursal) | Nombre tercero`. → saldos y movimientos por cuenta y tercero: sirve para **cartera por cobrar (1305)**, proveedores (22xx/23xx) y para saber qué cuentas ha movido cada tercero.
 - El archivo es un blob de Azure (`*.blob.core.windows.net`) generado con estructura OpenXML de .NET: se debe leer con SheetJS (ExcelJS falla).
 - Esto es un **resumen anual**, no documentos: el balance por tercero indica con qué cuentas se mueve un tercero, pero no su par cuenta/impuesto por documento; eso lo da el listado de compras/DS/comprobantes.
+
+## Medios de pago de los egresos (aclaración 27-nov-2026)
+`GET /v1/payment-types?document_type=RP` responde **404 siempre**: `RP` no es un valor válido del filtro (los válidos observados: `FV`, `NC`, `FC`, `RC`, `DS`). **No es un error de la herramienta ni de las credenciales.** Para el `payment.id` de un recibo de pago se usa la lista de `FC` filtrada a tipo "Proveedor" y activos (`mediosPagoEgreso`). El diagnóstico ahora verifica contra recibos de pago reales que sus `payment.id` pertenezcan a esa lista.

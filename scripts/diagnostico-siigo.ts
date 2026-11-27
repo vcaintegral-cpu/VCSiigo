@@ -19,7 +19,7 @@ const futuro = "2099-01-01";
 type Q = Record<string, string | number>;
 const pruebas: { nombre: string; ruta: string; query?: Q }[] = [
   ...["FV", "FC", "DS", "RC", "RP", "CC", "NC"].map((t) => ({ nombre: `tipos ${t}`, ruta: E.tiposComprobante, query: { type: t } })),
-  ...["FC", "FV", "NC", "RC", "RP", "DS"].map((t) => ({ nombre: `medios de pago (${t})`, ruta: "/v1/payment-types", query: { document_type: t } })),
+  ...["FC", "FV", "NC", "RC", "DS"].map((t) => ({ nombre: `medios de pago (${t})`, ruta: "/v1/payment-types", query: { document_type: t } })),
   { nombre: "centros de costo", ruta: E.centrosCosto },
   { nombre: "clientes/terceros", ruta: E.terceros, query: { page_size: 2 } },
   { nombre: "grupos de inventario", ruta: E.grupos },
@@ -103,6 +103,20 @@ async function main() {
     try { salida.detalle[nombre] = forma(await siigo.get(`${base}/${id}`)); console.log(`OK    detalle ${nombre}`); }
     catch (e: any) { salida.detalle[nombre] = { error: e?.status }; }
   }
+
+  // ¿El medio de pago de un recibo de pago real pertenece a la lista de medios FC (tipo Proveedor)?
+  try {
+    const idsFC = new Set((salida.catalogos["medios de pago (FC)"] ?? []).map((m: any) => m.id));
+    const rp: any = await siigo.get(E.recibosPago, { page_size: 25, created_start: hace30 });
+    const lista: any[] = rp?.results ?? [];
+    const conPago = lista.filter((x) => x?.payment?.id != null);
+    salida.verificacion_rp = {
+      recibos_revisados: conPago.length,
+      payment_id_en_lista_FC: conPago.filter((x) => idsFC.has(x.payment.id)).length,
+      payment_id_fuera_de_lista_FC: conPago.filter((x) => !idsFC.has(x.payment.id)).length,
+    };
+    console.log("OK    verificacion de medios de pago de recibos de pago");
+  } catch (e: any) { salida.verificacion_rp = { error: e?.status }; }
 
   if (process.argv.includes("--balance")) {
     // Balance de prueba general y por tercero: se genera el Excel, se descarga SOLO en su computador y
