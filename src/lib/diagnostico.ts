@@ -24,15 +24,26 @@ export function forma(valor: unknown, clave = "", profundidad = 0): unknown {
 
 const ENCABEZADO = /(cuenta|nombre|saldo|d[eé]bito|cr[eé]dito|tercero|identific|nit|c[oó]digo|descrip|movim|total|inicial|final|anterior|mes|a[nñ]o)/i;
 
-/** Forma de una hoja de Excel: conserva encabezados y códigos de cuenta; oculta nombres, NIT y cifras. */
+/**
+ * Forma de una hoja de Excel: conserva encabezados y SOLO los códigos de cuenta (columna cuyo encabezado
+ * contiene "código cuenta"); oculta nombres, identificaciones (NIT/cédulas) y cifras.
+ * (Una versión anterior conservaba cualquier número de 4-10 dígitos y dejó pasar NIT; corregido.)
+ */
 export function formaHoja(filas: unknown[][], max = 10): unknown[][] {
+  const colCodigo = (() => {
+    for (const f of filas) {
+      const i = f.findIndex((c) => /c[oó]digo\s+cuenta/i.test(String(c ?? "")));
+      if (i >= 0) return i;
+    }
+    return -1;
+  })();
   return filas.slice(0, max).map((fila) =>
-    fila.map((c) => {
+    fila.map((c, i) => {
       if (c === null || c === undefined || c === "") return null;
       if (typeof c === "number") return "<number>";
       const t = String(c).trim();
-      if (/^\d{4,10}$/.test(t)) return t; // código de cuenta PUC
-      if (t.length <= 30 && ENCABEZADO.test(t)) return t;
+      if (i === colCodigo && /^\d{1,10}$/.test(t)) return t;
+      if (t.length <= 30 && ENCABEZADO.test(t) && !/^\d+$/.test(t)) return t;
       return `<string:${t.length}>`;
     }),
   );

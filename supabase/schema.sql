@@ -494,3 +494,29 @@ do $$ declare c record; begin
 end $$;
 
 alter table empresa_config add column if not exists sync_activo boolean not null default true;
+
+-- ---------------------------------------------------------------------
+-- PUC y balance por tercero (desde POST /v1/test-balance-report[-by-thirdparty])
+-- ---------------------------------------------------------------------
+alter table siigo_puc add column if not exists nivel text;
+alter table siigo_puc add column if not exists transaccional boolean;
+
+create table if not exists balance_tercero (
+  org_id uuid not null references organizaciones(id) on delete cascade,
+  anio int not null,
+  cuenta text not null,
+  nombre_cuenta text,
+  tercero_nit text not null,
+  sucursal text not null default '',
+  tercero_nombre text,
+  saldo_inicial numeric(18,2) not null default 0,
+  debito numeric(18,2) not null default 0,
+  credito numeric(18,2) not null default 0,
+  saldo_final numeric(18,2) not null default 0,
+  generado_en timestamptz not null default now()
+);
+create index if not exists balance_tercero_idx on balance_tercero(org_id, anio, cuenta);
+create index if not exists balance_tercero_nit_idx on balance_tercero(org_id, tercero_nit);
+alter table balance_tercero enable row level security;
+drop policy if exists balance_tercero_select on balance_tercero;
+create policy balance_tercero_select on balance_tercero for select using (es_miembro(org_id));

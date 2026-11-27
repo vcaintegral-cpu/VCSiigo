@@ -15,9 +15,9 @@ describe("forma (redactor)", () => {
 import { formaHoja } from "../src/lib/diagnostico";
 describe("formaHoja", () => {
   it("conserva encabezados y cuentas, oculta nombres y valores", () => {
-    const f = formaHoja([["EMPRESA ACME SAS", null], ["Cuenta", "Nombre", "Saldo inicial", "Débito"], ["11100501", "BANCO DE ALGO", 1500000, 20]]);
-    expect(JSON.stringify(f)).not.toMatch(/ACME|BANCO DE ALGO|1500000/);
-    expect(f[1]).toEqual(["Cuenta", "Nombre", "Saldo inicial", "Débito"]);
-    expect(f[2]).toEqual(["11100501", "<string:13>", "<number>", "<number>"]);
+    const f = formaHoja([["EMPRESA ACME SAS", null], ["900470166", null], ["Cuenta", "Código cuenta contable", "Identificación", "Saldo inicial"], ["Auxiliar", "11100501", "1000192673", 1500000]]);
+    expect(JSON.stringify(f)).not.toMatch(/ACME|900470166|1000192673|1500000/);
+    expect(f[2]).toEqual(["Cuenta", "Código cuenta contable", "Identificación", "Saldo inicial"]);
+    expect(f[3]).toEqual(["<string:8>", "11100501", "<string:10>", "<number>"]);
   });
 });

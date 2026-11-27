@@ -1,3 +1,4 @@
+import { sincronizarBalance } from "../balance/sync";
 import { descargarHistorico, reconstruirReglas, sincronizarMaestros, sincronizarNuevos } from "../learning/train";
 import { siigoDeOrg } from "../siigo-org";
 import { supabaseAdmin } from "../supabase/admin";
@@ -32,6 +33,18 @@ export const HANDLERS: Record<string, Handler> = {
     if (errores.length) return { ok: false, error: JSON.stringify(errores) };
     const nuevos = Object.values(r).reduce((s, v) => s + v.nuevos, 0);
     return nuevos > 0 ? { ok: true, siguiente: { tipo: "aprendizaje.reconstruir", payload: {}, clave: `reglas:${job.org_id}` } } : { ok: true };
+  },
+
+  /** PUC + balance por tercero del año (payload.anio, por defecto el actual). */
+  "sync.balance": async (job) => {
+    if (!job.org_id) return { ok: false, error: "Falta org_id" };
+    const b = breakerDe(job.org_id);
+    if (b.isOpen()) return { ok: false, error: "Disyuntor abierto para la empresa", reintentarSeg: Math.ceil(b.retryAfterMs() / 1000) };
+    try {
+      await sincronizarBalance(supabaseAdmin(), await siigoDeOrg(job.org_id), job.org_id, Number(job.payload.anio) || new Date().getFullYear());
+      b.record(true);
+      return { ok: true };
+    } catch (e: any) { b.record(false); return { ok: false, error: String(e?.message ?? e) }; }
   },
 
   "aprendizaje.reconstruir": async (job) => {

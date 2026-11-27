@@ -64,3 +64,10 @@ Corrige algunas conclusiones previas basadas solo en la documentación.
 - **Tamaño máximo de página: 100** (con `page_size=200` devuelve 100).
 - **`POST /v1/test-balance-report` funciona** y devuelve `{ file_id, file_url }` (Excel en un blob de Azure). Es la vía para obtener el PUC con saldos y el balance por tercero sin que el usuario cargue archivos. La estructura del Excel se verifica con `npm run diagnostico -- --balance` (v4).
 - Los totales de ventas y recibos cambian entre corridas: la empresa tiene movimiento diario; las pruebas de escritura deben usar un mes cerrado o documentos fácilmente reversibles.
+
+## ✅ Estructura del balance de prueba (27-nov-2026, empresa real)
+- Ambos reportes devuelven un Excel con una sola hoja (`bal-prueba-general` ≈ 500 filas; `bal-prueba-por-tercero` ≈ 12.000 filas). Filas 1–4: título, nombre de la empresa, **NIT (fila 3)** y periodo; fila 5 = encabezado.
+- **General:** `Nivel | Transaccional | Código cuenta contable | Nombre Cuenta contable | Saldo Inicial | Movimiento Débito | Movimiento Crédito | Saldo final`. Niveles: Clase, Grupo, Cuenta, Subcuenta, Auxiliar. → **es la fuente del PUC** (que la API no expone) y de qué cuentas son transaccionales.
+- **Por tercero:** igual más `Identificación | (Sucursal) | Nombre tercero`. → saldos y movimientos por cuenta y tercero: sirve para **cartera por cobrar (1305)**, proveedores (22xx/23xx) y para saber qué cuentas ha movido cada tercero.
+- El archivo es un blob de Azure (`*.blob.core.windows.net`) generado con estructura OpenXML de .NET: se debe leer con SheetJS (ExcelJS falla).
+- Esto es un **resumen anual**, no documentos: el balance por tercero indica con qué cuentas se mueve un tercero, pero no su par cuenta/impuesto por documento; eso lo da el listado de compras/DS/comprobantes.

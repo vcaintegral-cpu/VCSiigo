@@ -21,7 +21,9 @@ Leyenda: `[x]` hecho y probado · `[~]` hecho pero **pendiente de validar con su
 - [x] Extractor de aprendizaje corregido (Account/Product, tipos de impuesto), builder DebtPayment, lectura de cartera por pagar
 - [x] Diagnóstico v2: compras/DS sin filtro de fecha; journals solo created/updated; impuestos con mismo % distintos → el aprendizaje guarda `impuesto_id`
 - [x] Diagnóstico v3: listados de más nuevo a más antiguo, página máx. 100, balance devuelve enlace a Excel
-- [ ] Diagnóstico v4: estructura del Excel del balance (lector con SheetJS; ExcelJS falla con archivos de Siigo, reproducido)
+- [x] Diagnóstico v4: estructura del balance verificada; lectores `parseBalanceGeneral/Tercero` + `sincronizarBalance` (PUC y saldos por tercero) + handler `sync.balance`
+- [ ] Programar `sync.balance` semanal y usar el PUC como compuerta (la cuenta debe existir y ser transaccional)
+- [ ] Cartera por cobrar desde el balance por tercero (cuenta 1305)
 - [ ] Seguridad: `xlsx@0.18.5` tiene avisos conocidos; pasar a 0.20.x (solo en cdn.sheetjs.com, bloqueado en el entorno de desarrollo) o aislar la lectura de archivos de terceros
 - [ ] Cruce con retenciones: el movimiento bancario es el NETO; hoy el cruce compara contra el bruto (hallazgo de las pruebas)
 - [ ] Cola → handlers de compras/DS/egresos con las 7 compuertas
