@@ -7,7 +7,7 @@
  * (impuestos y tipos de comprobante). Los datos crudos nunca se escriben a disco.
  */
 import { writeFileSync } from "node:fs";
-import ExcelJS from "exceljs";
+import { hojasDeExcel } from "../src/lib/excel-lector";
 import { forma, formaHoja } from "../src/lib/diagnostico";
 import { SIIGO_ENDPOINTS as E, siigoFromEnv } from "../src/lib/siigo";
 
@@ -115,16 +115,17 @@ async function main() {
           const res = await fetch(r.file_url);
           info.descarga_http = res.status;
           if (res.ok) {
-            const wb = new ExcelJS.Workbook();
-            await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as any);
-            info.hojas = wb.worksheets.map((ws) => {
-              const filas: unknown[][] = [];
-              ws.eachRow({ includeEmpty: false }, (row, n) => {
-                if (n > 14) return;
-                filas.push((row.values as unknown[]).slice(1).map((v: any) => (v && typeof v === "object" ? (v.result ?? v.text ?? "") : v)));
-              });
-              return { nombre: ws.name, filas: ws.rowCount, columnas: ws.columnCount, muestra: formaHoja(filas, 14) };
-            });
+            const datos = Buffer.from(await res.arrayBuffer());
+            info.bytes = datos.length;
+            try {
+              info.hojas = hojasDeExcel(datos).map((h) => ({
+                nombre: h.nombre, filas: h.filas.length, columnas: Math.max(0, ...h.filas.slice(0, 50).map((f) => f.length)),
+                muestra: formaHoja(h.filas.slice(0, 14), 14),
+              }));
+            } catch (err: any) {
+              info.error_lectura = String(err?.message ?? err).slice(0, 200);
+              info.inicio_bytes_hex = datos.subarray(0, 8).toString("hex"); // 504b0304 = zip/xlsx
+            }
           }
         }
         (salida.balance_excel ??= {})[nombre] = info;
